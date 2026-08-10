@@ -46,11 +46,8 @@ name varchar(255),
 primary key (id)
 );
 ```
+
 ## FRONT-END
-
-<img src="images/front.png" style="width: 600px; height: 300px;"><br>
-<br>
-
 ### Technical Details
 
 - **Front-end written on:** React JS
