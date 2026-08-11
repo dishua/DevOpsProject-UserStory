@@ -20,6 +20,11 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CONFIG_DIR="$SCRIPT_DIR/config"
 VOLUME_NAME="userstory_mariadb_data"
 export COMPOSE_PROJECT_NAME="userstory"
+START_DIR="$(pwd)"
+
+# -- Restore directory on exit ----------------------------
+cleanup_dir() { cd "$START_DIR"; }
+trap cleanup_dir EXIT
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════╗"
@@ -29,11 +34,11 @@ echo "╚═══════════════════════�
 echo -e "${NC}"
 
 # -- Check Docker ------------------------------------------
-if ! command -v docker &> /dev/null; then
+if ! command -v docker &>/dev/null; then
     echo -e "${RED}[ERROR] Docker not found. Install Docker and try again.${NC}"
     exit 1
 fi
-if ! command -v docker compose &> /dev/null; then
+if ! docker compose version &>/dev/null; then
     echo -e "${RED}[ERROR] Docker Compose not found.${NC}"
     exit 1
 fi
@@ -44,7 +49,7 @@ setup_env() {
     echo -e "${CYAN}Setting up environment variables (.env)${NC}"
     echo ""
 
-    # DB_ROOT_PASSWORD - required
+    # DB_ROOT_PASSWORD - required, hidden
     while [[ -z "$INPUT_ROOT_PASS" ]]; do
         read -rsp "  DB_ROOT_PASSWORD (MariaDB root password): " INPUT_ROOT_PASS
         echo ""
@@ -56,7 +61,7 @@ setup_env() {
     read -rp "  DB_USERSTORYPROJ_USER (database user) [userstorydb]: " INPUT_DB_USER
     DB_USERSTORYPROJ_USER="${INPUT_DB_USER:-userstorydb}"
 
-    # DB_USERSTORYPROJ_PASSWORD - required
+    # DB_USERSTORYPROJ_PASSWORD - required, hidden
     while [[ -z "$INPUT_PASS" ]]; do
         read -rsp "  DB_USERSTORYPROJ_PASSWORD (database user password): " INPUT_PASS
         echo ""
@@ -65,6 +70,7 @@ setup_env() {
     DB_USERSTORYPROJ_PASSWORD="$INPUT_PASS"
 
     cat > "$CONFIG_DIR/.env" <<EOL
+COMPOSE_PROJECT_NAME=userstory
 DB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
 DB_USERSTORYPROJ_USER=${DB_USERSTORYPROJ_USER}
 DB_USERSTORYPROJ_PASSWORD=${DB_USERSTORYPROJ_PASSWORD}
@@ -80,7 +86,7 @@ EOL
 if [[ ! -f "$CONFIG_DIR/.env" ]]; then
     echo -e "${YELLOW}[WARN] .env file not found.${NC}"
 
-    if [ ! -f "$CONFIG_DIR/.env.example" ]; then
+    if [[ ! -f "$CONFIG_DIR/.env.example" ]]; then
         echo -e "${RED}[ERROR] .env.example not found. Check project structure.${NC}"
         exit 1
     fi
@@ -92,9 +98,7 @@ if [[ ! -f "$CONFIG_DIR/.env" ]]; then
     read -rp "Your choice [1/2]: " ENV_CHOICE
 
     case "$ENV_CHOICE" in
-        1)
-            setup_env
-            ;;
+        1) setup_env ;;
         2)
             cp "$CONFIG_DIR/.env.example" "$CONFIG_DIR/.env"
             echo -e "${YELLOW}[WARN] Edit $CONFIG_DIR/.env and run the script again.${NC}"
@@ -107,7 +111,7 @@ if [[ ! -f "$CONFIG_DIR/.env" ]]; then
     esac
 fi
 
-# Always update PROJECT_DIR in .env
+# -- Set working dir and update PROJECT_DIR in .env --------
 cd "$CONFIG_DIR"
 grep -v "^PROJECT_DIR=" "$CONFIG_DIR/.env" > "$CONFIG_DIR/.env.tmp"
 echo "PROJECT_DIR=${PROJECT_DIR}" >> "$CONFIG_DIR/.env.tmp"
@@ -116,7 +120,7 @@ mv "$CONFIG_DIR/.env.tmp" "$CONFIG_DIR/.env"
 # -- Check if first deploy or re-deploy --------------------
 if docker volume inspect "$VOLUME_NAME" &>/dev/null; then
 
-    # ── RE-DEPLOY: volume exists, files already copied ────
+    # ── RE-DEPLOY ─────────────────────────────────────────
     echo -e "${YELLOW}[INFO] Existing deployment detected (volume: $VOLUME_NAME)${NC}"
     echo ""
 
@@ -164,7 +168,7 @@ if docker volume inspect "$VOLUME_NAME" &>/dev/null; then
 
 else
 
-    # ── FIRST DEPLOY: copy files and start ────────────────
+    # ── FIRST DEPLOY ──────────────────────────────────────
     echo -e "${CYAN}[1/3] First deploy — copying files...${NC}"
 
     cp "$CONFIG_DIR/backend.Dockerfile"  "$PROJECT_DIR/backend/Dockerfile"
@@ -186,14 +190,12 @@ else
 
 fi
 
-cd "$SCRIPT_DIR"
-
 # -- Result ------------------------------------------------
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║          Started successfully!  [OK]     ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "Container status:"
+echo "Container status:"
 docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 echo ""

@@ -20,6 +20,11 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CONFIG_DIR="$SCRIPT_DIR/config"
 VOLUME_NAME="userstory_mariadb_data"
 export COMPOSE_PROJECT_NAME="userstory"
+START_DIR="$(pwd)"
+
+# -- Restore directory on exit ----------------------------
+cleanup_dir() { cd "$START_DIR"; }
+trap cleanup_dir EXIT
 
 echo -e "${RED}"
 echo "╔══════════════════════════════════════════╗"
@@ -29,7 +34,7 @@ echo "╚═══════════════════════�
 echo -e "${NC}"
 
 # -- Check Docker ------------------------------------------
-if ! command -v docker &> /dev/null; then
+if ! command -v docker &>/dev/null; then
     echo -e "${RED}[ERROR] Docker not found.${NC}"
     exit 1
 fi
@@ -49,7 +54,7 @@ COPIED_FILES=(
 
 FILES_EXIST=false
 for F in "${COPIED_FILES[@]}"; do
-    if [ -e "$F" ]; then
+    if [[ -e "$F" ]]; then
         FILES_EXIST=true
         break
     fi
@@ -67,9 +72,8 @@ if $VOLUME_EXISTS; then
 else
     echo -e "  ${YELLOW}[none] ${NC} Volume: $VOLUME_NAME not found"
 fi
-
 for F in "${COPIED_FILES[@]}"; do
-    if [ -e "$F" ]; then
+    if [[ -e "$F" ]]; then
         RELATIVE="${F#$PROJECT_DIR/}"
         echo -e "  ${GREEN}[found]${NC} File:   $RELATIVE"
     fi
@@ -77,7 +81,8 @@ done
 echo ""
 
 # -- Select cleanup level ----------------------------------
-echo -e "Select cleanup level:\n"
+echo -e "Select cleanup level:"
+echo ""
 echo -e "  ${GREEN}1)${NC} Soft    - stop containers, remove copied files"
 echo -e "  ${GREEN}2)${NC} Full    - + remove volume  ${RED}(database data will be lost!)${NC}"
 echo -e "  ${GREEN}3)${NC} Nuclear - + remove Docker images"
@@ -114,9 +119,7 @@ echo ""
 echo -e "${CYAN}[1/3] Stopping containers...${NC}"
 
 HAS_CONTAINERS=false
-if docker compose ps -q 2>/dev/null | grep -q .; then
-    HAS_CONTAINERS=true
-fi
+docker compose ps -q 2>/dev/null | grep -q . && HAS_CONTAINERS=true || true
 
 if [[ "$LEVEL" == "2" || "$LEVEL" == "3" ]]; then
     docker compose down -v 2>/dev/null || true
@@ -138,7 +141,6 @@ fi
 echo ""
 if [[ "$LEVEL" == "3" ]]; then
     echo -e "${CYAN}[2/3] Removing Docker images...${NC}"
-
     for IMAGE in "userstory-backend" "userstory-frontend"; do
         if docker image inspect "$IMAGE" &>/dev/null; then
             docker rmi "$IMAGE"
@@ -162,7 +164,7 @@ FILES_TO_REMOVE=(
 )
 
 for FILE in "${FILES_TO_REMOVE[@]}"; do
-    if [ -f "$FILE" ]; then
+    if [[ -f "$FILE" ]]; then
         rm "$FILE"
         RELATIVE="${FILE#$PROJECT_DIR/}"
         echo -e "  ${GREEN}[OK]${NC} Removed: $RELATIVE"
@@ -172,14 +174,12 @@ for FILE in "${FILES_TO_REMOVE[@]}"; do
     fi
 done
 
-if [ -d "$PROJECT_DIR/db" ]; then
+if [[ -d "$PROJECT_DIR/db" ]]; then
     rm -rf "$PROJECT_DIR/db"
     echo -e "  ${GREEN}[OK]${NC} Removed: db/"
 else
     echo -e "  ${YELLOW}[--]${NC} Not found: db/"
 fi
-
-cd "$SCRIPT_DIR"
 
 # -- Result -----------------------------------------------
 echo ""
@@ -187,13 +187,11 @@ echo -e "${GREEN}╔════════════════════
 echo -e "${GREEN}║           Cleanup complete!  [OK]        ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════╝${NC}"
 echo ""
-
 case "$LEVEL" in
-    1) echo -e "  Done: containers stopped, copied files removed" ;;
-    2) echo -e "  Done: containers + volume removed, files removed" ;;
-    3) echo -e "  Done: containers + volume + images removed, files removed" ;;
+    1) echo "  Done: containers stopped, copied files removed" ;;
+    2) echo "  Done: containers + volume removed, files removed" ;;
+    3) echo "  Done: containers + volume + images removed, files removed" ;;
 esac
-
 echo ""
 echo -e "  To deploy again: ${CYAN}./deploy.sh${NC}"
 echo ""
