@@ -1,17 +1,36 @@
-target/
-pom.xml.tag
-pom.xml.releaseBackup
-pom.xml.versionsBackup
-pom.xml.next
-release.properties
-dependency-reduced-pom.xml
-buildNumber.properties
-.mvn/timing.properties
-# https://maven.apache.org/tools/wrapper/#Usage_with_or_without_Binary_JAR
-.mvn/wrapper/maven-wrapper.jar
+# ─────────────────────────────────────────
+#  ROOT .gitignore
+#  DevOpsProject-UserStory
+# ─────────────────────────────────────────
 
-# Eclipse m2e generated files
-# Eclipse Core
+# ── Docker ────────────────────────────────
+.env
+.env.local
+.env.*.local
+docker-compose.override.yml
+
+# ── OS ────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+desktop.ini
+
+# ── Editors ───────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 .project
-# JDT-specific (Eclipse Java Development Tools)
 .classpath
+.settings/
+
+# ── Logs ──────────────────────────────────
+*.log
+logs/
+
+# ── DataBase ──────────────────────────────────
+db/

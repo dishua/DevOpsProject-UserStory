@@ -1,0 +1,8 @@
+# Docker local overrides and configurations
+docker-compose.override.yml
+docker-compose.local.yml
+
+# Environment files containing secrets and credentials
+.env
+.env.local
+.env.*.local

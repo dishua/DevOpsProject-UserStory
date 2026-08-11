@@ -1,0 +1,216 @@
+﻿# ---------------------------------------------------------
+#  deploy.ps1
+#  Copies Dockerfiles to project folders and starts
+#  docker-compose for DevOpsProject-UserStory
+# ---------------------------------------------------------
+
+$ErrorActionPreference = "Stop"
+
+# -- Paths -------------------------------------------------
+$SCRIPT_DIR  = Split-Path -Parent $MyInvocation.MyCommand.Path
+$PROJECT_DIR = (Resolve-Path "$SCRIPT_DIR\..\..").Path
+$CONFIG_DIR  = "$SCRIPT_DIR\config"
+$VOLUME_NAME = "userstory_mariadb_data"
+$env:COMPOSE_PROJECT_NAME = "userstory"
+
+# -- Colors ------------------------------------------------
+function Write-Cyan   { param($msg) Write-Host $msg -ForegroundColor Cyan    }
+function Write-Green  { param($msg) Write-Host $msg -ForegroundColor Green   }
+function Write-Yellow { param($msg) Write-Host $msg -ForegroundColor Yellow  }
+function Write-Red    { param($msg) Write-Host $msg -ForegroundColor Red     }
+
+Write-Host ""
+Write-Cyan  "╔══════════════════════════════════════════╗"
+Write-Cyan  "║        DevOpsProject-UserStory           ║"
+Write-Cyan  "║              Docker Deploy               ║"
+Write-Cyan  "╚══════════════════════════════════════════╝"
+Write-Host ""
+
+# -- Save start location -----------------------------------
+$startLocation = Get-Location
+
+# -- Check Docker ------------------------------------------
+if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    Write-Red "[ERROR] Docker not found. Install Docker Desktop and try again."
+    exit 1
+}
+try { docker compose version | Out-Null }
+catch {
+    Write-Red "[ERROR] Docker Compose not found."
+    exit 1
+}
+
+# -- Function: setup .env ----------------------------------
+function Setup-Env {
+    Write-Host ""
+    Write-Cyan "Setting up environment variables (.env)"
+    Write-Host ""
+
+    do {
+        $secRootPass = Read-Host "  DB_ROOT_PASSWORD (MariaDB root password)" -AsSecureString
+        if ($secRootPass.Length -eq 0) { Write-Red "  [X] Password cannot be empty" }
+    } while ($secRootPass.Length -eq 0)
+    $DB_ROOT_PASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+        [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secRootPass)
+    )
+
+    $inputUser = Read-Host "  DB_USERSTORYPROJ_USER (database user) [userstorydb]"
+    $DB_USERSTORYPROJ_USER = if ($inputUser -eq "") { "userstorydb" } else { $inputUser }
+
+    do {
+        $secPass = Read-Host "  DB_USERSTORYPROJ_PASSWORD (database user password)" -AsSecureString
+        if ($secPass.Length -eq 0) { Write-Red "  [X] Password cannot be empty" }
+    } while ($secPass.Length -eq 0)
+    $DB_USERSTORYPROJ_PASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+        [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secPass)
+    )
+
+    $projectDirForward = $PROJECT_DIR -replace "\\", "/"
+    $envContent = "DB_ROOT_PASSWORD=$DB_ROOT_PASSWORD`r`nDB_USERSTORYPROJ_USER=$DB_USERSTORYPROJ_USER`r`nDB_USERSTORYPROJ_PASSWORD=$DB_USERSTORYPROJ_PASSWORD`r`nPROJECT_DIR=$projectDirForward`r`n"
+    [System.IO.File]::WriteAllText("$CONFIG_DIR\.env", $envContent, [System.Text.Encoding]::UTF8)
+
+    Write-Host ""
+    Write-Green "  [OK] .env created successfully"
+    Write-Host ""
+}
+
+# -- Check .env --------------------------------------------
+if (-not (Test-Path -LiteralPath "$CONFIG_DIR\.env")) {
+    Write-Yellow "[WARN] .env file not found."
+
+    if (-not (Test-Path -LiteralPath "$CONFIG_DIR\.env.example")) {
+        Write-Red "[ERROR] .env.example not found. Check project structure."
+        exit 1
+    }
+
+    Write-Host "Choose an option:"
+    Write-Green "  1) Enter values now (interactive)"
+    Write-Green "  2) Copy .env.example and fill in manually later"
+    Write-Host ""
+    $envChoice = Read-Host "Your choice [1/2]"
+
+    switch ($envChoice) {
+        "1" { Setup-Env }
+        "2" {
+            Copy-Item "$CONFIG_DIR\.env.example" "$CONFIG_DIR\.env"
+            Write-Yellow "[WARN] Edit $CONFIG_DIR\.env and run the script again."
+            exit 0
+        }
+        default {
+            Write-Red "[ERROR] Invalid choice. Exiting."
+            exit 1
+        }
+    }
+}
+
+# Always update PROJECT_DIR in .env
+Set-Location $CONFIG_DIR
+$projectDirForward = $PROJECT_DIR -replace "\\", "/"
+$envLines = Get-Content "$CONFIG_DIR\.env" | Where-Object { $_ -notmatch "^PROJECT_DIR=" }
+$envLines += "PROJECT_DIR=$projectDirForward"
+[System.IO.File]::WriteAllLines("$CONFIG_DIR\.env", $envLines, [System.Text.Encoding]::UTF8)
+
+# -- Check if first deploy or re-deploy --------------------
+$volumeExists = $false
+try {
+    docker volume inspect $VOLUME_NAME 2>$null | Out-Null
+    $volumeExists = ($LASTEXITCODE -eq 0)
+} catch { $volumeExists = $false }
+
+if ($volumeExists) {
+
+    # ── RE-DEPLOY ─────────────────────────────────────────
+    Write-Yellow "[INFO] Existing deployment detected (volume: $VOLUME_NAME)"
+    Write-Host ""
+
+    $runningList = $null
+    try {
+        $runningList = docker compose ps --services --filter "status=running" 2>$null |
+                       Where-Object { $_.Trim() -ne "" }
+    } catch { $runningList = $null }
+    $runningCount = if ($runningList) { @($runningList).Count } else { 0 }
+
+    if ($runningCount -gt 0) {
+        Write-Green "[INFO] Containers are running:"
+        docker compose ps --format "table {{.Name}}`t{{.Status}}"
+    } else {
+        Write-Yellow "[INFO] Containers are stopped."
+    }
+
+    Write-Host ""
+    Write-Host "What would you like to do?"
+    Write-Green "  1) Start normally          (docker compose up -d)"
+    Write-Green "  2) Restart without rebuild (docker compose restart)"
+    Write-Green "  3) Rebuild and restart     (docker compose up --build -d)"
+    Write-Green "  4) Exit without changes"
+    Write-Host ""
+    $choice = Read-Host "Your choice [1/2/3/4]"
+
+    switch ($choice) {
+        "1" {
+            Write-Cyan "Starting containers..."
+            docker compose up -d
+            if ($LASTEXITCODE -ne 0) { Write-Red "[ERROR] Failed."; exit 1 }
+        }
+        "2" {
+            Write-Cyan "Restarting containers..."
+            docker compose restart
+        }
+        "3" {
+            Write-Cyan "Rebuilding and restarting..."
+            docker compose up --build -d
+            if ($LASTEXITCODE -ne 0) { Write-Red "[ERROR] Failed."; exit 1 }
+        }
+        "4" {
+            Write-Yellow "Exit without changes."
+            exit 0
+        }
+        default {
+            Write-Red "[ERROR] Invalid choice. Exiting."
+            exit 1
+        }
+    }
+
+} else {
+
+    # ── FIRST DEPLOY ──────────────────────────────────────
+    Write-Cyan "[1/3] First deploy — copying files..."
+
+    Copy-Item -Force ([IO.Path]::Combine($CONFIG_DIR, "backend.Dockerfile")) ([IO.Path]::Combine($PROJECT_DIR, "backend", "Dockerfile"))
+    Write-Green "  [OK] backend/Dockerfile"
+
+    Copy-Item -Force ([IO.Path]::Combine($CONFIG_DIR, "frontend.Dockerfile")) ([IO.Path]::Combine($PROJECT_DIR, "frontend", "Dockerfile"))
+    Write-Green "  [OK] frontend/Dockerfile"
+
+    Copy-Item -Force ([IO.Path]::Combine($CONFIG_DIR, "nginx.conf")) ([IO.Path]::Combine($PROJECT_DIR, "frontend", "nginx.conf"))
+    Write-Green "  [OK] frontend/nginx.conf"
+
+    $dbDest = [IO.Path]::Combine($PROJECT_DIR, "db")
+    $dbSrc  = [IO.Path]::Combine($CONFIG_DIR, "db")
+    if (-not (Test-Path -LiteralPath $dbDest)) {
+        New-Item -ItemType Directory -Path $dbDest | Out-Null
+    }
+    Copy-Item -Recurse -Force "$dbSrc\*" $dbDest
+    Write-Green "  [OK] db/ (init.sql)"
+
+    Write-Host ""
+    Write-Cyan "[2/3] Starting containers..."
+    docker compose up --build -d
+    if ($LASTEXITCODE -ne 0) {
+        Write-Red "[ERROR] docker compose up failed. Check the logs above."
+        exit 1
+    }
+}
+
+
+# -- Result ------------------------------------------------
+Write-Host ""
+Write-Green "╔══════════════════════════════════════════╗"
+Write-Green "║          Started successfully!  [OK]     ║"
+Write-Green "╚══════════════════════════════════════════╝"
+Write-Host ""
+Write-Host "Container status:"
+docker compose ps --format "table {{.Name}}`t{{.Status}}`t{{.Ports}}"
+Write-Host ""
+
+Set-Location $startLocation
