@@ -80,3 +80,6 @@ userstory_front/.env.production.local
 userstory_front/npm-debug.log*
 userstory_front/yarn-debug.log*
 userstory_front/yarn-error.log*
+
+Dockerfile
+/db/

@@ -182,11 +182,11 @@ if ($volumeExists) {
     Copy-Item -Force ([IO.Path]::Combine($CONFIG_DIR, "frontend.Dockerfile")) ([IO.Path]::Combine($PROJECT_DIR, "frontend", "Dockerfile"))
     Write-Green "  [OK] frontend/Dockerfile"
 
-    Copy-Item -Force ([IO.Path]::Combine($CONFIG_DIR, "nginx.conf")) ([IO.Path]::Combine($PROJECT_DIR, "frontend", "nginx.conf"))
+    Copy-Item -Force ([IO.Path]::Combine($CONFIG_DIR, "nginx.conf.example")) ([IO.Path]::Combine($PROJECT_DIR, "frontend", "nginx.conf"))
     Write-Green "  [OK] frontend/nginx.conf"
 
     $dbDest = [IO.Path]::Combine($PROJECT_DIR, "db")
-    $dbSrc  = [IO.Path]::Combine($CONFIG_DIR, "db")
+    $dbSrc  = [IO.Path]::Combine($CONFIG_DIR, "db-init")
     if (-not (Test-Path -LiteralPath $dbDest)) {
         New-Item -ItemType Directory -Path $dbDest | Out-Null
     }

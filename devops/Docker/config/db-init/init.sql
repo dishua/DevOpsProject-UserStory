@@ -10,3 +10,5 @@ CREATE TABLE IF NOT EXISTS projects (
     name        VARCHAR(255),
     PRIMARY KEY (id)
 );
+
+INSERT INTO projects (id, description, name) VALUES (1, 'Description of project1', 'Project1');

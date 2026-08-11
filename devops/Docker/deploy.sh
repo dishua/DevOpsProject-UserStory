@@ -177,11 +177,11 @@ else
     cp "$CONFIG_DIR/frontend.Dockerfile" "$PROJECT_DIR/frontend/Dockerfile"
     echo -e "  ${GREEN}[OK]${NC} frontend/Dockerfile"
 
-    cp "$CONFIG_DIR/nginx.conf" "$PROJECT_DIR/frontend/nginx.conf"
+    cp "$CONFIG_DIR/nginx.conf.example" "$PROJECT_DIR/frontend/nginx.conf"
     echo -e "  ${GREEN}[OK]${NC} frontend/nginx.conf"
 
-    mkdir -p "$PROJECT_DIR/db"
-    cp -r "$CONFIG_DIR/db/"* "$PROJECT_DIR/db/"
+    mkdir -p "$PROJECT_DIR/db-init"
+    cp -r "$CONFIG_DIR/db-init/"* "$PROJECT_DIR/db/"
     echo -e "  ${GREEN}[OK]${NC} db/ (init.sql)"
 
     echo ""
