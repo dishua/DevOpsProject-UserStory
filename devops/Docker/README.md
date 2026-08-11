@@ -10,7 +10,7 @@ This directory contains all Docker-related configuration and scripts for contain
 | Service  | Technology             | Port |
 |----------|------------------------|------|
 | Backend  | Java 17 · Spring Boot  | 8080 |
-| Frontend | React · Node 20 · Nginx| 80   |
+| Frontend | React · Node 20 · Nginx| 3000 |
 | Database | MariaDB 11             | 3306 |
 
 ---
