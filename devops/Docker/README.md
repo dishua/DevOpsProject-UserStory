@@ -1,6 +1,4 @@
-# README.md UA -> https://github.com/dishua/DevOpsProject-UserStory/blob/master/devops/Docker/READMEUA.md
-
-
+# [README in Ukrainian](READMEUA.md)
 ---
 
 # Docker — DevOpsProject-UserStory
@@ -38,32 +36,6 @@ docker/
 
 ---
 
-## Quick Start
-
-### Prerequisites
-
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
-- PowerShell 5+ (Windows) or Bash (Linux/macOS)
-
-### Windows
-
-```powershell
-# Allow script execution (one-time setup)
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-
-# Run deploy
-.\deploy.ps1
-```
-
-### Linux / macOS
-
-```bash
-chmod +x deploy.sh cleanup.sh
-./deploy.sh
-```
-
----
-
 ## Deploy Script Behavior
 
 On **first run** (no existing deployment detected):
@@ -89,12 +61,12 @@ What would you like to do?
 
 All variables are stored in `config/.env` (created on first run).
 
-| Variable                   | Required | Default       | Description                        |
-|----------------------------|----------|---------------|------------------------------------|
-| `DB_ROOT_PASSWORD`         | ✅ yes   | —             | MariaDB root password              |
-| `DB_USERSTORYPROJ_USER`    | no       | `userstorydb` | Application database user          |
-| `DB_USERSTORYPROJ_PASSWORD`| ✅ yes   | —             | Application database user password |
-| `PROJECT_DIR`              | auto     | set by script | Absolute path to project root      |
+| Variable                   | Description                        |
+|----------------------------|------------------------------------|
+| `DB_ROOT_PASSWORD`         | MariaDB root password              |
+| `DB_USERSTORYPROJ_USER`    | Application database user          |
+| `DB_USERSTORYPROJ_PASSWORD`| Application database user password |
+| `PROJECT_DIR`              | Absolute path to project root      |
 
 > `PROJECT_DIR` is set and updated automatically by the deploy script on every run. You do not need to set it manually.
 
