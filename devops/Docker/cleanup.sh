@@ -5,7 +5,8 @@
 #  for DevOpsProject-UserStory
 # ---------------------------------------------------------
 
-set -e
+set -euo pipefail
+umask 077  # new files: owner only (600 for files, 700 for dirs)
 
 # -- Colors ------------------------------------------------
 RED='\033[0;31m'
@@ -22,9 +23,9 @@ VOLUME_NAME="userstory_mariadb_data"
 export COMPOSE_PROJECT_NAME="userstory"
 START_DIR="$(pwd)"
 
-# -- Restore directory on exit ----------------------------
-cleanup_dir() { cd "$START_DIR"; }
-trap cleanup_dir EXIT
+# -- Restore directory on any exit -------------------------
+cleanup() { cd "$START_DIR"; }
+trap cleanup EXIT INT TERM
 
 echo -e "${RED}"
 echo "╔══════════════════════════════════════════╗"
@@ -39,11 +40,16 @@ if ! command -v docker &>/dev/null; then
     exit 1
 fi
 
+if ! docker info &>/dev/null; then
+    echo -e "${RED}[ERROR] Docker daemon is not running. Start Docker and try again.${NC}"
+    exit 1
+fi
+
 # -- Check if anything was ever deployed -------------------
 cd "$CONFIG_DIR"
 
 VOLUME_EXISTS=false
-docker volume inspect "$VOLUME_NAME" &>/dev/null && VOLUME_EXISTS=true
+docker volume inspect "$VOLUME_NAME" &>/dev/null && VOLUME_EXISTS=true || true
 
 COPIED_FILES=(
     "$PROJECT_DIR/backend/Dockerfile"
