@@ -1,4 +1,4 @@
-﻿# ---------------------------------------------------------
+# ---------------------------------------------------------
 #  cleanup.ps1
 #  Stops and removes containers, images, volumes
 #  for DevOpsProject-UserStory
@@ -26,16 +26,21 @@ Write-Red  "║              Docker Cleanup              ║"
 Write-Red  "╚══════════════════════════════════════════╝"
 Write-Host ""
 
-# -- Save start location -----------------------------------
+# -- Save starting directory ------------------------------
 $startLocation = Get-Location
 
-# -- Check Docker ------------------------------------------
+# -- Check Docker -----------------------------------------
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Red "[ERROR] Docker not found."
     exit 1
 }
+try { docker info 2>$null | Out-Null } catch {}
+if ($LASTEXITCODE -ne 0) {
+    Write-Red "[ERROR] Docker daemon is not running. Start Docker Desktop and try again."
+    exit 1
+}
 
-# -- Check if anything was ever deployed -------------------
+# -- Check if anything was ever deployed ------------------
 Set-Location $CONFIG_DIR
 
 $volumeExists = $false
@@ -58,6 +63,7 @@ foreach ($f in $copiedFiles) {
 if (-not $volumeExists -and -not $filesExist) {
     Write-Yellow "[INFO] No existing deployment found."
     Write-Yellow "       Volume $VOLUME_NAME not detected and no copied files found."
+    Set-Location $startLocation
     exit 0
 }
 
@@ -67,16 +73,15 @@ if ($volumeExists) {
 } else {
     Write-Yellow "  [none]  Volume: $VOLUME_NAME not found"
 }
-
 foreach ($f in $copiedFiles) {
     if (Test-Path -LiteralPath $f) {
-        $rel = $f.Replace($PROJECT_DIR + "", "")
+        $rel = $f.Replace($PROJECT_DIR + "\", "")
         Write-Green "  [found] File:   $rel"
     }
 }
 Write-Host ""
 
-# -- Select cleanup level ----------------------------------
+# -- Select cleanup level ---------------------------------
 Write-Host "Select cleanup level:"
 Write-Host ""
 Write-Green "  1) Soft    - stop containers, remove copied files"
@@ -88,15 +93,17 @@ $level = Read-Host "Your choice [1/2/3/4]"
 
 if ($level -eq "4") {
     Write-Yellow "Exit without changes."
+    Set-Location $startLocation
     exit 0
 }
 
 if ($level -notin @("1","2","3")) {
     Write-Red "[ERROR] Invalid choice. Exiting."
+    Set-Location $startLocation
     exit 1
 }
 
-# -- Confirm -----------------------------------------------
+# -- Confirm ----------------------------------------------
 Write-Host ""
 if ($level -in @("2","3")) {
     Write-Red "!! WARNING: This action is irreversible! Database data will be deleted! !!"
@@ -104,15 +111,15 @@ if ($level -in @("2","3")) {
 $confirm = Read-Host "Continue? [y/N]"
 if ($confirm -notmatch "^[Yy]$") {
     Write-Yellow "Cancelled."
+    Set-Location $startLocation
     exit 0
 }
 
 Write-Host ""
 
-# -- Step 1: Stop and remove containers -------------------
+# -- Step 1: Stop and remove containers ------------------
 Write-Cyan "[1/3] Stopping containers..."
 
-# Use Continue so docker stderr warnings don't abort the script
 $prevPref = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 
@@ -140,7 +147,7 @@ if ($level -in @("2","3")) {
 
 $ErrorActionPreference = $prevPref
 
-# -- Step 2: Remove Docker images -------------------------
+# -- Step 2: Remove Docker images ------------------------
 Write-Host ""
 if ($level -eq "3") {
     Write-Cyan "[2/3] Removing Docker images..."
@@ -161,7 +168,7 @@ if ($level -eq "3") {
     Write-Yellow "[2/3] Image removal - skipped"
 }
 
-# -- Step 3: Remove copied files --------------------------
+# -- Step 3: Remove copied files -------------------------
 Write-Host ""
 Write-Cyan "[3/3] Removing copied files..."
 
@@ -190,7 +197,7 @@ if (Test-Path -LiteralPath $dbPath) {
     Write-Yellow "  [--] Not found: db/"
 }
 
-# -- Result -----------------------------------------------
+# -- Result ----------------------------------------------
 Write-Host ""
 Write-Green "╔══════════════════════════════════════════╗"
 Write-Green "║           Cleanup complete!  [OK]        ║"
