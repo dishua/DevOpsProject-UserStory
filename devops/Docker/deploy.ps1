@@ -1,4 +1,4 @@
-﻿# ---------------------------------------------------------
+# ---------------------------------------------------------
 #  deploy.ps1
 #  Copies Dockerfiles to project folders and starts
 #  docker-compose for DevOpsProject-UserStory
@@ -26,12 +26,17 @@ Write-Cyan  "║              Docker Deploy               ║"
 Write-Cyan  "╚══════════════════════════════════════════╝"
 Write-Host ""
 
-# -- Save start location -----------------------------------
-$startLocation = Get-Location
+# -- Save starting directory ------------------------------
+$startDir = Get-Location
 
-# -- Check Docker ------------------------------------------
+# -- Check Docker -----------------------------------------
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Red "[ERROR] Docker not found. Install Docker Desktop and try again."
+    exit 1
+}
+try { docker info 2>$null | Out-Null } catch {}
+if ($LASTEXITCODE -ne 0) {
+    Write-Red "[ERROR] Docker daemon is not running. Start Docker Desktop and try again."
     exit 1
 }
 try { docker compose version | Out-Null }
@@ -40,41 +45,51 @@ catch {
     exit 1
 }
 
-# -- Function: setup .env ----------------------------------
+# -- Function: setup .env ---------------------------------
 function Setup-Env {
     Write-Host ""
     Write-Cyan "Setting up environment variables (.env)"
     Write-Host ""
 
+    # DB_ROOT_PASSWORD - required, hidden input via SecureString
     do {
         $secRootPass = Read-Host "  DB_ROOT_PASSWORD (MariaDB root password)" -AsSecureString
         if ($secRootPass.Length -eq 0) { Write-Red "  [X] Password cannot be empty" }
     } while ($secRootPass.Length -eq 0)
-    $DB_ROOT_PASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-        [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secRootPass)
-    )
+    $bstrRoot = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secRootPass)
+    $DB_ROOT_PASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringAuto($bstrRoot)
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstrRoot)
 
+    # DB_USERSTORYPROJ_USER - optional
     $inputUser = Read-Host "  DB_USERSTORYPROJ_USER (database user) [userstorydb]"
     $DB_USERSTORYPROJ_USER = if ($inputUser -eq "") { "userstorydb" } else { $inputUser }
 
+    # DB_USERSTORYPROJ_PASSWORD - required, hidden input via SecureString
     do {
         $secPass = Read-Host "  DB_USERSTORYPROJ_PASSWORD (database user password)" -AsSecureString
         if ($secPass.Length -eq 0) { Write-Red "  [X] Password cannot be empty" }
     } while ($secPass.Length -eq 0)
-    $DB_USERSTORYPROJ_PASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-        [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secPass)
-    )
+    $bstrPass = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secPass)
+    $DB_USERSTORYPROJ_PASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringAuto($bstrPass)
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstrPass)
 
     $projectDirForward = $PROJECT_DIR -replace "\\", "/"
-    $envContent = "DB_ROOT_PASSWORD=$DB_ROOT_PASSWORD`r`nDB_USERSTORYPROJ_USER=$DB_USERSTORYPROJ_USER`r`nDB_USERSTORYPROJ_PASSWORD=$DB_USERSTORYPROJ_PASSWORD`r`nPROJECT_DIR=$projectDirForward`r`n"
+    $envContent = "COMPOSE_PROJECT_NAME=userstory`r`nDB_ROOT_PASSWORD=$DB_ROOT_PASSWORD`r`nDB_USERSTORYPROJ_USER=$DB_USERSTORYPROJ_USER`r`nDB_USERSTORYPROJ_PASSWORD=$DB_USERSTORYPROJ_PASSWORD`r`nPROJECT_DIR=$projectDirForward`r`n"
     [System.IO.File]::WriteAllText("$CONFIG_DIR\.env", $envContent, [System.Text.Encoding]::UTF8)
 
+    # Restrict .env to current user only
+    icacls "$CONFIG_DIR\.env" /inheritance:r /grant:r "${env:USERNAME}:(R,W)" 2>$null | Out-Null
+
+    # Clear plaintext passwords from memory
+    $DB_ROOT_PASSWORD = $null; $DB_USERSTORYPROJ_PASSWORD = $null
+    Remove-Variable DB_ROOT_PASSWORD, DB_USERSTORYPROJ_PASSWORD -ErrorAction SilentlyContinue
+
     Write-Host ""
-    Write-Green "  [OK] .env created successfully"
+    Write-Green "  [OK] .env created successfully (restricted permissions)"
     Write-Host ""
 }
 
-# -- Check .env --------------------------------------------
+# -- Check .env -------------------------------------------
 if (-not (Test-Path -LiteralPath "$CONFIG_DIR\.env")) {
     Write-Yellow "[WARN] .env file not found."
 
@@ -93,24 +108,30 @@ if (-not (Test-Path -LiteralPath "$CONFIG_DIR\.env")) {
         "1" { Setup-Env }
         "2" {
             Copy-Item "$CONFIG_DIR\.env.example" "$CONFIG_DIR\.env"
+            icacls "$CONFIG_DIR\.env" /inheritance:r /grant:r "${env:USERNAME}:(R,W)" 2>$null | Out-Null
             Write-Yellow "[WARN] Edit $CONFIG_DIR\.env and run the script again."
+            Set-Location $startDir
             exit 0
         }
         default {
             Write-Red "[ERROR] Invalid choice. Exiting."
+            Set-Location $startDir
             exit 1
         }
     }
 }
 
-# Always update PROJECT_DIR in .env
+# -- Always update PROJECT_DIR in .env (atomic write) -----
 Set-Location $CONFIG_DIR
 $projectDirForward = $PROJECT_DIR -replace "\\", "/"
 $envLines = Get-Content "$CONFIG_DIR\.env" | Where-Object { $_ -notmatch "^PROJECT_DIR=" }
 $envLines += "PROJECT_DIR=$projectDirForward"
-[System.IO.File]::WriteAllLines("$CONFIG_DIR\.env", $envLines, [System.Text.Encoding]::UTF8)
+$envTmp = "$CONFIG_DIR\.env.tmp"
+[System.IO.File]::WriteAllLines($envTmp, $envLines, [System.Text.Encoding]::UTF8)
+icacls $envTmp /inheritance:r /grant:r "${env:USERNAME}:(R,W)" 2>$null | Out-Null
+Move-Item -Force $envTmp "$CONFIG_DIR\.env"
 
-# -- Check if first deploy or re-deploy --------------------
+# -- Check if first deploy or re-deploy -------------------
 $volumeExists = $false
 try {
     docker volume inspect $VOLUME_NAME 2>$null | Out-Null
@@ -119,7 +140,7 @@ try {
 
 if ($volumeExists) {
 
-    # ── RE-DEPLOY ─────────────────────────────────────────
+    # RE-DEPLOY
     Write-Yellow "[INFO] Existing deployment detected (volume: $VOLUME_NAME)"
     Write-Host ""
 
@@ -163,17 +184,19 @@ if ($volumeExists) {
         }
         "4" {
             Write-Yellow "Exit without changes."
+            Set-Location $startDir
             exit 0
         }
         default {
             Write-Red "[ERROR] Invalid choice. Exiting."
+            Set-Location $startDir
             exit 1
         }
     }
 
 } else {
 
-    # ── FIRST DEPLOY ──────────────────────────────────────
+    # FIRST DEPLOY
     Write-Cyan "[1/3] First deploy — copying files..."
 
     Copy-Item -Force ([IO.Path]::Combine($CONFIG_DIR, "backend.Dockerfile")) ([IO.Path]::Combine($PROJECT_DIR, "backend", "Dockerfile"))
@@ -200,10 +223,65 @@ if ($volumeExists) {
         Write-Red "[ERROR] docker compose up failed. Check the logs above."
         exit 1
     }
+
+    # -- Seed database -------------------------------------
+    $seedFile = [IO.Path]::Combine($CONFIG_DIR, "db", "seed.sql")
+    if (Test-Path -LiteralPath $seedFile) {
+        Write-Host ""
+        Write-Cyan "[3/3] Waiting for database to be ready..."
+
+        $prevPref = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+
+        $envContent = Get-Content "$CONFIG_DIR\.env"
+        $dbUser = ($envContent | Where-Object { $_ -match "^DB_USERSTORYPROJ_USER=" }) -replace "^DB_USERSTORYPROJ_USER=", ""
+        $dbPass = ($envContent | Where-Object { $_ -match "^DB_USERSTORYPROJ_PASSWORD=" }) -replace "^DB_USERSTORYPROJ_PASSWORD=", ""
+        $dbContainer = "userstory-db-1"
+
+        # Use MYSQL_PWD to avoid password appearing in process list
+        $env:MYSQL_PWD = $dbPass
+
+        $timeout = 60
+        $elapsed = 0
+        $ready = $false
+
+        # Step 1: wait for DB connection
+        while ($elapsed -lt $timeout) {
+            docker exec $dbContainer mariadb -u"$dbUser" -e "SELECT 1;" 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) { break }
+            Start-Sleep -Seconds 2
+            $elapsed += 2
+            Write-Yellow "  ... waiting for connection (${elapsed}s)"
+        }
+
+        # Step 2: wait for schema (init.sql may still be running)
+        $elapsed = 0
+        while ($elapsed -lt $timeout) {
+            docker exec $dbContainer mariadb -u"$dbUser" -e "SELECT 1 FROM userstory.projects LIMIT 1;" 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) { $ready = $true; break }
+            Start-Sleep -Seconds 2
+            $elapsed += 2
+            Write-Yellow "  ... waiting for schema (${elapsed}s)"
+        }
+
+        $ErrorActionPreference = $prevPref
+
+        if ($ready) {
+            Get-Content $seedFile | docker exec -i $dbContainer mariadb -u"$dbUser" userstory 2>$null
+            Write-Green "  [OK] Seed data loaded from db/seed.sql"
+        } else {
+            Write-Yellow "  [WARN] Database not ready within ${timeout}s. Skipping seed."
+        }
+
+        # Clear credentials from memory
+        [System.Environment]::SetEnvironmentVariable("MYSQL_PWD", $null)
+        $env:MYSQL_PWD = $null
+        $dbUser = $null; $dbPass = $null
+        Remove-Variable dbUser, dbPass -ErrorAction SilentlyContinue
+    }
 }
 
-
-# -- Result ------------------------------------------------
+# -- Result -----------------------------------------------
 Write-Host ""
 Write-Green "╔══════════════════════════════════════════╗"
 Write-Green "║          Started successfully!  [OK]     ║"
@@ -213,4 +291,4 @@ Write-Host "Container status:"
 docker compose ps --format "table {{.Name}}`t{{.Status}}`t{{.Ports}}"
 Write-Host ""
 
-Set-Location $startLocation
+Set-Location $startDir
