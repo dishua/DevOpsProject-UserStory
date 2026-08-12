@@ -1,4 +1,4 @@
-# ---------------------------------------------------------
+﻿# ---------------------------------------------------------
 #  deploy.ps1
 #  Copies Dockerfiles to project folders and starts
 #  docker-compose for DevOpsProject-UserStory
@@ -60,9 +60,30 @@ function Setup-Env {
     $DB_ROOT_PASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringAuto($bstrRoot)
     [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstrRoot)
 
-    # DB_USERSTORYPROJ_USER - optional
-    $inputUser = Read-Host "  DB_USERSTORYPROJ_USER (database user) [userstorydb]"
-    $DB_USERSTORYPROJ_USER = if ($inputUser -eq "") { "userstorydb" } else { $inputUser }
+    # DB_USERSTORYPROJ_USER - optional (default: userstory)
+    do {
+        $inputUser = (Read-Host "  DB_USERSTORYPROJ_USER (database user) [default: userstory]").Trim()
+
+        if ([string]::IsNullOrWhiteSpace($inputUser)) {
+            $inputUser = "userstory"
+        }
+
+        $isValid = $true
+
+        if ($inputUser -eq "root") {
+            Write-Red "  [X] Username cannot be 'root'."
+            $isValid = $false
+        }
+        elseif ($inputUser -match "\s") {
+            Write-Red "  [X] Username cannot contain spaces."
+            $isValid = $false
+        }
+        elseif ($inputUser -notmatch '^[a-zA-Z0-9_]+$') {
+            Write-Red "  [X] Username can only contain letters, numbers, and underscores (_)."
+            $isValid = $false
+        }
+    } while (-not $isValid)
+    $DB_USERSTORYPROJ_USER = $inputUser
 
     # DB_USERSTORYPROJ_PASSWORD - required, hidden input via SecureString
     do {
@@ -124,12 +145,12 @@ if (-not (Test-Path -LiteralPath "$CONFIG_DIR\.env")) {
 # -- Always update PROJECT_DIR in .env (atomic write) -----
 Set-Location $CONFIG_DIR
 $projectDirForward = $PROJECT_DIR -replace "\\", "/"
+
 $envLines = Get-Content "$CONFIG_DIR\.env" | Where-Object { $_ -notmatch "^PROJECT_DIR=" }
 $envLines += "PROJECT_DIR=$projectDirForward"
-$envTmp = "$CONFIG_DIR\.env.tmp"
-[System.IO.File]::WriteAllLines($envTmp, $envLines, [System.Text.Encoding]::UTF8)
-icacls $envTmp /inheritance:r /grant:r "${env:USERNAME}:(R,W)" 2>$null | Out-Null
-Move-Item -Force $envTmp "$CONFIG_DIR\.env"
+# Write directly — icacls applied after to restrict access
+[System.IO.File]::WriteAllLines("$CONFIG_DIR\.env", $envLines, [System.Text.Encoding]::UTF8)
+icacls "$CONFIG_DIR\.env" /inheritance:r /grant:r "${env:USERNAME}:(R,W)" 2>$null | Out-Null
 
 # -- Check if first deploy or re-deploy -------------------
 $volumeExists = $false
@@ -209,6 +230,7 @@ if ($volumeExists) {
     Write-Green "  [OK] frontend/nginx.conf"
 
     $dbDest = [IO.Path]::Combine($PROJECT_DIR, "db")
+
     $dbSrc  = [IO.Path]::Combine($CONFIG_DIR, "db-init")
     if (-not (Test-Path -LiteralPath $dbDest)) {
         New-Item -ItemType Directory -Path $dbDest | Out-Null
@@ -225,7 +247,7 @@ if ($volumeExists) {
     }
 
     # -- Seed database -------------------------------------
-    $seedFile = [IO.Path]::Combine($CONFIG_DIR, "db", "seed.sql")
+    $seedFile = [IO.Path]::Combine($CONFIG_DIR, "db-init", "seed.sql")
     if (Test-Path -LiteralPath $seedFile) {
         Write-Host ""
         Write-Cyan "[3/3] Waiting for database to be ready..."
@@ -233,21 +255,29 @@ if ($volumeExists) {
         $prevPref = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
 
-        $envContent = Get-Content "$CONFIG_DIR\.env"
-        $dbUser = ($envContent | Where-Object { $_ -match "^DB_USERSTORYPROJ_USER=" }) -replace "^DB_USERSTORYPROJ_USER=", ""
-        $dbPass = ($envContent | Where-Object { $_ -match "^DB_USERSTORYPROJ_PASSWORD=" }) -replace "^DB_USERSTORYPROJ_PASSWORD=", ""
+        $envContent = [System.IO.File]::ReadAllLines("$CONFIG_DIR\.env")
+        $dbUser = ($envContent | Where-Object { $_ -match "^DB_USERSTORYPROJ_USER=" } | Select-Object -First 1) -replace "^DB_USERSTORYPROJ_USER=", ""
+        $dbPass = ($envContent | Where-Object { $_ -match "^DB_USERSTORYPROJ_PASSWORD=" } | Select-Object -First 1) -replace "^DB_USERSTORYPROJ_PASSWORD=", ""
         $dbContainer = "userstory-db-1"
 
-        # Use MYSQL_PWD to avoid password appearing in process list
-        $env:MYSQL_PWD = $dbPass
+        # Debug: verify credentials were read
+        if ([string]::IsNullOrEmpty($dbUser) -or [string]::IsNullOrEmpty($dbPass)) {
+            Write-Red "  [ERROR] Could not read DB credentials from .env. Skipping seed."
+            $ready = $false
+        } else {
+            Write-Yellow "  [INFO] Credentials loaded for user: $dbUser"
+        }
 
         $timeout = 60
         $elapsed = 0
         $ready = $false
 
+        if (-not ([string]::IsNullOrEmpty($dbUser)) -and -not ([string]::IsNullOrEmpty($dbPass))) {
+
         # Step 1: wait for DB connection
+        # Pass password via -e flag to docker exec (MYSQL_PWD not forwarded on Windows)
         while ($elapsed -lt $timeout) {
-            docker exec $dbContainer mariadb -u"$dbUser" -e "SELECT 1;" 2>$null | Out-Null
+            docker exec -e "MYSQL_PWD=$dbPass" $dbContainer mariadb -u"$dbUser" -e "SELECT 1;" 2>$null | Out-Null
             if ($LASTEXITCODE -eq 0) { break }
             Start-Sleep -Seconds 2
             $elapsed += 2
@@ -257,7 +287,7 @@ if ($volumeExists) {
         # Step 2: wait for schema (init.sql may still be running)
         $elapsed = 0
         while ($elapsed -lt $timeout) {
-            docker exec $dbContainer mariadb -u"$dbUser" -e "SELECT 1 FROM userstory.projects LIMIT 1;" 2>$null | Out-Null
+            docker exec -e "MYSQL_PWD=$dbPass" $dbContainer mariadb -u"$dbUser" -e "SELECT 1 FROM userstory.projects LIMIT 1;" 2>$null | Out-Null
             if ($LASTEXITCODE -eq 0) { $ready = $true; break }
             Start-Sleep -Seconds 2
             $elapsed += 2
@@ -267,15 +297,15 @@ if ($volumeExists) {
         $ErrorActionPreference = $prevPref
 
         if ($ready) {
-            Get-Content $seedFile | docker exec -i $dbContainer mariadb -u"$dbUser" userstory 2>$null
+            Get-Content $seedFile | docker exec -i -e "MYSQL_PWD=$dbPass" $dbContainer mariadb -u"$dbUser" userstory 2>$null
             Write-Green "  [OK] Seed data loaded from db/seed.sql"
         } else {
             Write-Yellow "  [WARN] Database not ready within ${timeout}s. Skipping seed."
         }
 
+        } # end credential guard
+
         # Clear credentials from memory
-        [System.Environment]::SetEnvironmentVariable("MYSQL_PWD", $null)
-        $env:MYSQL_PWD = $null
         $dbUser = $null; $dbPass = $null
         Remove-Variable dbUser, dbPass -ErrorAction SilentlyContinue
     }

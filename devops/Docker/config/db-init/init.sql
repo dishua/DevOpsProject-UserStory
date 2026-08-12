@@ -11,4 +11,4 @@ CREATE TABLE IF NOT EXISTS projects (
     PRIMARY KEY (id)
 );
 
-INSERT INTO projects (id, description, name) VALUES (1, 'Description of project1', 'Project1');
+INSERT INTO projects (description, name) VALUES ('INIT.SQL', 'Project1');

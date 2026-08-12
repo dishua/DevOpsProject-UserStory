@@ -1,4 +1,4 @@
-# ---------------------------------------------------------
+﻿# ---------------------------------------------------------
 #  cleanup.ps1
 #  Stops and removes containers, images, volumes
 #  for DevOpsProject-UserStory
@@ -60,7 +60,14 @@ foreach ($f in $copiedFiles) {
     if (Test-Path -LiteralPath $f) { $filesExist = $true; break }
 }
 
-if (-not $volumeExists -and -not $filesExist) {
+$imagesExist = $false
+$images = @("userstory-backend", "userstory-frontend")
+foreach ($image in $images) {
+    docker image inspect $image 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) { $imagesExist = $true; break }
+}
+
+if (-not $volumeExists -and -not $filesExist -and -not $imagesExist) {
     Write-Yellow "[INFO] No existing deployment found."
     Write-Yellow "       Volume $VOLUME_NAME not detected and no copied files found."
     Set-Location $startLocation
