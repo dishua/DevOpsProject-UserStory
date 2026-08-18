@@ -1,0 +1,57 @@
+env_file = '../config/.env'
+env_vars = {}
+
+unless File.exist?(env_file)
+  raise "Error: #{env_file} missing! Please create it before running Vagrant."
+end
+
+File.foreach(env_file, encoding: 'bom|utf-8') do |line|
+  line = line.strip
+  next if line.start_with?('#') || line.empty?
+  key, val = line.split('=', 2)
+  env_vars[key.strip] = val.strip.gsub(/\A['"]|['"]\z/, '') if key && val
+end
+
+DB_IP="192.168.56.10"
+BACKEND_IP="192.168.56.11"
+FRONTEND_IP="192.168.56.12"
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "generic/alpine319"
+
+  config.vm.define "db" do |db|
+    db.vm.hostname = "db"
+    db.vm.network "private_network", ip: DB_IP
+    db.vm.provider "virtualbox" do |v|
+      v.memory = 1024
+      v.cpus = 1
+      v.name = "userstory-db"
+    end
+    db_env = env_vars.slice("DB_ROOT_PASSWORD", "DB_USERSTORYPROJ_USER", "DB_USERSTORYPROJ_PASSWORD")
+    db.vm.provision "shell", path: "scripts/setup-db.sh", env: db_env
+  end
+
+  config.vm.define "backend" do |backend|
+    backend.vm.hostname = "backend"
+    backend.vm.network "private_network", ip: BACKEND_IP
+    backend.vm.provider "virtualbox" do |v|
+      v.memory = 1024
+      v.cpus = 1
+      v.name = "userstory-backend"
+    end
+    backend_env = env_vars.slice("DB_USERSTORYPROJ_USER","DB_USERSTORYPROJ_PASSWORD").merge({"DB_IP" => DB_IP})
+    backend.vm.provision "shell", path: "scripts/setup-backend.sh", env: backend_env
+  end
+
+  config.vm.define "frontend" do |frontend|
+    frontend.vm.hostname = "frontend"
+    frontend.vm.network "private_network", ip: FRONTEND_IP
+    frontend.vm.network "forwarded_port", guest: 80, host: 3000
+    frontend.vm.provider "virtualbox" do |v|
+      v.memory = 1024
+      v.cpus = 1
+      v.name = "userstory-frontend"
+    end
+    frontend.vm.provision "shell", path: "scripts/setup-frontend.sh", env: { "BACKEND_IP" => BACKEND_IP }
+  end
+end
