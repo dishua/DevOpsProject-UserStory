@@ -1,0 +1,45 @@
+---
+- name: Clone app source repository
+  ansible.builtin.git:
+    repo: 'https://github.com/dishua/DevOpsProject-UserStory.git'
+    dest: /opt/userstory
+    version: master
+    force: yes
+    
+- name: Wait for MariaDB to be accessible before starting backend
+  ansible.builtin.wait_for:
+    host: "{{ DB_IP }}"
+    port: 3306
+    state: started
+    delay: 2
+    timeout: 30
+
+- name: Build Java Backend Docker image
+  community.docker.docker_image:
+    name: userstory-backend
+    build:
+      path: /opt/userstory/backend
+      dockerfile: ../devops/Docker/config/backend.Dockerfile
+    source: build
+
+- name: Run Backend Docker Container
+  community.docker.docker_container:
+    name: userstory-backend
+    image: userstory-backend:latest
+    restart_policy: unless-stopped
+    recreate: yes
+    docker_host: "unix://var/run/docker.sock"
+    published_ports:
+      - "8080:8080"
+    env:
+      DB_USERSTORYPROJ_URL: "jdbc:mariadb://{{ DB_IP }}:3306/userstory"
+      DB_USERSTORYPROJ_USER: "{{ DB_USERSTORYPROJ_USER }}"
+      DB_USERSTORYPROJ_PASSWORD: "{{ DB_USERSTORYPROJ_PASSWORD }}"
+
+- name: Ensure Backend is responding on port 8080
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: 8080
+    state: started
+    delay: 3
+    timeout: 30

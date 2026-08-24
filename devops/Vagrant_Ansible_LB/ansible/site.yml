@@ -1,0 +1,30 @@
+---
+- name: 1. Base Machine Setup
+  hosts: all
+  become: true
+  roles:
+    - role: common
+      tags: [always, common]
+
+- name: 2. Provision Database Server
+  hosts: dbservers
+  become: true
+  any_errors_fatal: true
+  roles:
+    - role: db
+      tags: [db, database]
+
+- name: 3. Deploy Web Application on Both Backends
+  hosts: backendservers
+  become: true
+  any_errors_fatal: true
+  roles:
+    - role: backend
+      tags: [backend, app]
+
+- name: 4. Configure Frontend & Nginx Load Balancer
+  hosts: frontendservers
+  become: true
+  roles:
+    - role: frontend
+      tags: [frontend, lb, nginx]

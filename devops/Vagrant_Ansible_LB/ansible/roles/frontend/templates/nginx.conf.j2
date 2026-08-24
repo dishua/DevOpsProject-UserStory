@@ -1,0 +1,27 @@
+upstream backend_cluster {
+{% if lb_algorithm == 'least_conn' %}
+    least_conn;
+{% elif lb_algorithm == 'ip_hash' %}
+    ip_hash;
+{% endif %}
+    server {{ BACKEND1_IP }}:8080 max_fails=3 fail_timeout=10s;
+    server {{ BACKEND2_IP }}:8080 max_fails=3 fail_timeout=10s;
+}
+
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api/ {
+        proxy_pass http://backend_cluster/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

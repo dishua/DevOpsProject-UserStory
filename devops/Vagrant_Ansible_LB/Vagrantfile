@@ -1,0 +1,92 @@
+# 1. Читання .env
+env_file = File.expand_path('../config/.env', __dir__)
+env_vars = {}
+
+if File.exist?(env_file)
+  File.foreach(env_file, encoding: 'bom|utf-8') do |line|
+    line = line.strip
+    next if line.start_with?('#') || line.empty?
+
+    key, val = line.split('=', 2)
+    env_vars[key.strip] = val.strip.gsub(/\A['"]|['"]\z/, '') if key && val
+  end
+else
+  puts "Warning: #{env_file} not found. Proceeding with default/empty environment variables."
+end
+
+# 2. Конфіг нодів
+NODES = {
+  "db"       => { ip: "192.168.56.10", memory: 1024, cpus: 1 },
+  "backend1" => { ip: "192.168.56.11", memory: 1024, cpus: 1 },
+  "backend2" => { ip: "192.168.56.13", memory: 1024, cpus: 1 },
+  "frontend" => { ip: "192.168.56.12", memory: 1024, cpus: 1 }
+}.freeze
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "generic/alpine319"
+  config.ssh.insert_key = false
+  config.vm.synced_folder ".", "/vagrant"
+
+  config.vm.provision "shell", inline: <<-SHELL
+    apk update
+    apk add --no-cache docker git python3 py3-pip
+    pip install --break-system-packages "docker<7.0.0"
+    rc-update add docker default
+    service docker start
+  SHELL
+
+  # 3.Цикл по нодам
+  NODES.each do |name, opts|
+    config.vm.define name do |node|
+      node.vm.hostname = name
+      node.vm.network "private_network", ip: opts[:ip]
+
+      # Порти для Frontend/Load Balancer
+      if name == "frontend"
+        node.vm.network "forwarded_port", guest: 80, host: 3000
+      end
+
+      # Налаштування VirtualBox
+      node.vm.provider "virtualbox" do |v|
+        v.memory = opts[:memory]
+        v.cpus = opts[:cpus]
+        v.name = "userstory-#{name}"
+        v.customize ["modifyvm", :id, "--graphicscontroller", "vmsvga"]
+        v.customize ["modifyvm", :id, "--audio", "none"]
+      end
+
+      # 4. Специфічний профіжн для Control Node (frontend)
+      if name == "frontend"
+        node.vm.provision "shell", inline: <<-SHELL
+          apk add --no-cache ansible dos2unix git
+
+          # Виправлення Windows CRLF та BOM
+          [ -f /vagrant/ansible/inventory/hosts.ini ] && dos2unix /vagrant/ansible/inventory/hosts.ini
+
+          # Налаштування приватного ключа SSH для Ansible
+          if [ -f /vagrant/ansible/insecure_private_key ]; then
+            cp /vagrant/ansible/insecure_private_key /tmp/insecure_private_key
+            chown vagrant:vagrant /tmp/insecure_private_key
+            chmod 600 /tmp/insecure_private_key
+          fi
+        SHELL
+
+        # Запуск Ansible Local
+        node.vm.provision "ansible_local" do |ansible|
+          ansible.playbook = "ansible/site.yml"
+          ansible.inventory_path = "ansible/inventory/hosts.ini"
+          ansible.provisioning_path = "/vagrant"
+          ansible.limit = "all"
+          ansible.verbose = "v"
+          ansible.extra_vars = env_vars.merge({
+            "DB_IP"        => NODES["db"][:ip],
+            "BACKEND1_IP"  => NODES["backend1"][:ip],
+            "BACKEND2_IP"  => NODES["backend2"][:ip],
+            "FRONTEND_IP"  => NODES["frontend"][:ip],
+            "lb_algorithm" => "round_robin"
+          })
+        end
+      end
+    end
+  end
+end
