@@ -1,0 +1,36 @@
+---
+- name: Clean up old invalid target directory
+  ansible.builtin.file:
+    path: /tmp/db-init
+    state: absent
+
+- name: Ensure target directory exists on DB host
+  ansible.builtin.file:
+    path: /tmp/db-init
+    state: directory
+    mode: '0755'
+
+- name: Copy init.sql to DB host
+  ansible.builtin.copy:
+    src: init.sql
+    dest: /tmp/db-init/init.sql
+    mode: '0644'
+
+- name: Deploy MariaDB Docker Container
+  community.docker.docker_container:
+    name: userstory-db
+    image: mariadb:10.11
+    state: started
+    recreate: true
+    restart_policy: always
+    docker_host: "unix://var/run/docker.sock"
+    ports:
+      - "3306:3306"
+    volumes:
+      - /tmp/db-init:/docker-entrypoint-initdb.d
+    #  - mariadb_data:/var/lib/mysql:rw
+    env:
+      MYSQL_ROOT_PASSWORD: "{{ DB_ROOT_PASSWORD }}"
+      MYSQL_DATABASE: "userstory"
+      MYSQL_USER: "{{ DB_USERSTORYPROJ_USER }}"
+      MYSQL_PASSWORD: "{{ DB_USERSTORYPROJ_PASSWORD }}"

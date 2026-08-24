@@ -65,7 +65,7 @@ chmod +x /etc/init.d/backend
 
 
 echo "=== Starting Backend Service ==="
-rc-update add backend default'
+rc-update add backend default
 
 if rc-service backend status >/dev/null 2>&1; then
   rc-service backend restart

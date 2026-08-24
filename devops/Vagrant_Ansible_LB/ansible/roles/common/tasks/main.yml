@@ -1,0 +1,24 @@
+---
+- name: Install Docker, Git, Python3, and requests on Alpine
+  community.general.apk:
+    name:
+      - docker
+      - git
+      - python3
+      - py3-pip
+    state: present
+
+- name: Install working Python Docker SDK stack via pip
+  ansible.builtin.pip:
+    name:
+      - "requests<2.32.0"
+      - "urllib3<2.0.0"
+      - "docker<7.0.0"
+    extra_args: "--break-system-packages"
+    state: present
+
+- name: Start and enable Docker service
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
