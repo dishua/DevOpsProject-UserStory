@@ -9,7 +9,9 @@ $ErrorActionPreference = "Stop"
 # -- Paths -------------------------------------------------
 $SCRIPT_DIR  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $PROJECT_DIR = (Resolve-Path "$SCRIPT_DIR\..\..").Path
-$CONFIG_DIR  = "$SCRIPT_DIR\config"
+#$CONFIG_DIR  = "$SCRIPT_DIR\config"
+$CONFIG_DIR  = (Resolve-Path "$SCRIPT_DIR\..\config").Path
+$DOCKER_DIR = (Resolve-Path "$SCRIPT_DIR\config").Path
 $VOLUME_NAME = "userstory_mariadb_data"
 $env:COMPOSE_PROJECT_NAME = "userstory"
 
@@ -152,6 +154,12 @@ $envLines += "PROJECT_DIR=$projectDirForward"
 [System.IO.File]::WriteAllLines("$CONFIG_DIR\.env", $envLines, [System.Text.Encoding]::UTF8)
 icacls "$CONFIG_DIR\.env" /inheritance:r /grant:r "${env:USERNAME}:(R,W)" 2>$null | Out-Null
 
+# -- Switching to the dir with Docker files -----
+Set-Location $DOCKER_DIR
+
+# Переменная с явным указанием пути к .env для docker compose
+$ENV_FILE = "$CONFIG_DIR\.env"
+
 # -- Check if first deploy or re-deploy -------------------
 $volumeExists = $false
 try {
@@ -167,14 +175,14 @@ if ($volumeExists) {
 
     $runningList = $null
     try {
-        $runningList = docker compose ps --services --filter "status=running" 2>$null |
+        $runningList = docker compose --env-file $ENV_FILE ps --services --filter "status=running" 2>$null |
                        Where-Object { $_.Trim() -ne "" }
     } catch { $runningList = $null }
     $runningCount = if ($runningList) { @($runningList).Count } else { 0 }
 
     if ($runningCount -gt 0) {
         Write-Green "[INFO] Containers are running:"
-        docker compose ps --format "table {{.Name}}`t{{.Status}}"
+        docker compose --env-file $ENV_FILE ps --format "table {{.Name}}`t{{.Status}}"
     } else {
         Write-Yellow "[INFO] Containers are stopped."
     }
@@ -191,16 +199,16 @@ if ($volumeExists) {
     switch ($choice) {
         "1" {
             Write-Cyan "Starting containers..."
-            docker compose up -d
+            docker compose --env-file $ENV_FILE up -d
             if ($LASTEXITCODE -ne 0) { Write-Red "[ERROR] Failed."; exit 1 }
         }
         "2" {
             Write-Cyan "Restarting containers..."
-            docker compose restart
+            docker compose --env-file $ENV_FILE restart
         }
         "3" {
             Write-Cyan "Rebuilding and restarting..."
-            docker compose up --build -d
+            docker compose up --env-file $ENV_FILE --build -d
             if ($LASTEXITCODE -ne 0) { Write-Red "[ERROR] Failed."; exit 1 }
         }
         "4" {
@@ -220,10 +228,10 @@ if ($volumeExists) {
     # FIRST DEPLOY
     Write-Cyan "[1/3] First deploy — copying files..."
 
-    Copy-Item -Force ([IO.Path]::Combine($CONFIG_DIR, "backend.Dockerfile")) ([IO.Path]::Combine($PROJECT_DIR, "backend", "Dockerfile"))
+    Copy-Item -Force ([IO.Path]::Combine($DOCKER_DIR, "backend.Dockerfile")) ([IO.Path]::Combine($PROJECT_DIR, "backend", "Dockerfile"))
     Write-Green "  [OK] backend/Dockerfile"
 
-    Copy-Item -Force ([IO.Path]::Combine($CONFIG_DIR, "frontend.Dockerfile")) ([IO.Path]::Combine($PROJECT_DIR, "frontend", "Dockerfile"))
+    Copy-Item -Force ([IO.Path]::Combine($DOCKER_DIR, "frontend.Dockerfile")) ([IO.Path]::Combine($PROJECT_DIR, "frontend", "Dockerfile"))
     Write-Green "  [OK] frontend/Dockerfile"
 
     Copy-Item -Force ([IO.Path]::Combine($CONFIG_DIR, "nginx.conf.example")) ([IO.Path]::Combine($PROJECT_DIR, "frontend", "nginx.conf"))
@@ -240,7 +248,7 @@ if ($volumeExists) {
 
     Write-Host ""
     Write-Cyan "[2/3] Starting containers..."
-    docker compose up --build -d
+    docker compose --env-file $ENV_FILE up --build -d
     if ($LASTEXITCODE -ne 0) {
         Write-Red "[ERROR] docker compose up failed. Check the logs above."
         exit 1
@@ -318,7 +326,7 @@ Write-Green "║          Started successfully!  [OK]     ║"
 Write-Green "╚══════════════════════════════════════════╝"
 Write-Host ""
 Write-Host "Container status:"
-docker compose ps --format "table {{.Name}}`t{{.Status}}`t{{.Ports}}"
+docker compose --env-file $ENV_FILE ps --format "table {{.Name}}`t{{.Status}}`t{{.Ports}}"
 Write-Host ""
 
 Set-Location $startDir

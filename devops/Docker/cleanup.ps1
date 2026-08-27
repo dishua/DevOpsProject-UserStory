@@ -9,7 +9,9 @@ $ErrorActionPreference = "Stop"
 # -- Paths -------------------------------------------------
 $SCRIPT_DIR  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $PROJECT_DIR = (Resolve-Path "$SCRIPT_DIR\..\.." ).Path
-$CONFIG_DIR  = Join-Path $SCRIPT_DIR "config"
+#$CONFIG_DIR  = Join-Path $SCRIPT_DIR "config"
+$CONFIG_DIR  = (Resolve-Path "$SCRIPT_DIR\..\config").Path
+$DOCKER_DIR = "$SCRIPT_DIR\config"
 $VOLUME_NAME = "userstory_mariadb_data"
 $env:COMPOSE_PROJECT_NAME = "userstory"
 
@@ -41,7 +43,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # -- Check if anything was ever deployed ------------------
-Set-Location $CONFIG_DIR
+Set-Location $DOCKER_DIR
 
 $volumeExists = $false
 try {
