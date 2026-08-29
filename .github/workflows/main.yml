@@ -45,13 +45,22 @@ jobs:
       - name: Build backend
         run: |
           cd backend
-          if [ -f "./mvnw" ]; then ./mvnw clean package; else  mvn clean package; fi
+          if [ -f "./mvnw" ]; then
+            chmod +x ./mvnw
+            ./mvnw clean package
+          else
+            mvn clean package
+          fi
 
   docker-check:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Prepare Frontend Config
+        run: |
+          cp devops/config/nginx.conf.example frontend/nginx.conf
 
       - name: Build Frontend Docker Image
         run: |
