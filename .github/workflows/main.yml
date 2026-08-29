@@ -25,6 +25,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
           
       - name: Install dependencies and Build
+        env:
+          CI: false
         run: |
           cd frontend
           npm ci
@@ -71,7 +73,7 @@ jobs:
             docker build -t test-backend -f devops/Docker/config/backend.Dockerfile ./backend
 
   integration-test:
-    needs: [frontend, backend]
+    needs: [frontend, backend, docker-check]
     runs-on: ubuntu-latest
     environment: production
     steps:
