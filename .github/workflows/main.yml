@@ -82,7 +82,7 @@ jobs:
 
       - name: Validate Docker Compose Configuration
         run: |
-          docker compose -f devops/Docker/config/docker-compose.yml config
+          docker compose -f devops/Docker/config/docker-compose.yaml config
 
       - name: Start services with Docker Compose
         env:
@@ -90,7 +90,7 @@ jobs:
           DB_USERSTORYPROJ_USER: ${{ secrets.DB_USERSTORYPROJ_USER }}
           DB_USERSTORYPROJ_PASSWORD: ${{ secrets.DB_USERSTORYPROJ_PASSWORD }}
         run: |
-          docker compose -f devops/Docker/config/docker-compose.yml up -d --build
+          docker compose -f devops/Docker/config/docker-compose.yaml up -d --build
 
       - name: Check running containers
         run: |
@@ -110,5 +110,5 @@ jobs:
         if: always()
         run: |
           # Якщо впав, виводимо логи
-          docker compose -f devops/config/docker-compose.yml logs
-          docker compose -f devops/config/docker-compose.yml down -v
+          docker compose -f devops/config/docker-compose.yaml logs
+          docker compose -f devops/config/docker-compose.yaml down -v
