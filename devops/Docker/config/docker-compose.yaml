@@ -11,7 +11,7 @@ services:
       MARIADB_PASSWORD: ${DB_USERSTORYPROJ_PASSWORD}
     volumes:
       - mariadb_data:/var/lib/mysql
-      - ${PROJECT_DIR:-.}/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ${PROJECT_DIR}/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD", "healthcheck.sh","--connect", "--innodb_initialized"]
       interval: 10s
@@ -20,7 +20,7 @@ services:
   
   backend:
     build: 
-      context: ${PROJECT_DIR:-.}/backend
+      context: ${PROJECT_DIR}/backend
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
@@ -35,7 +35,7 @@ services:
 
   frontend:
     build: 
-      context: ${PROJECT_DIR:-.}/frontend
+      context: ${PROJECT_DIR}/frontend
       dockerfile: Dockerfile
       args:
         BACKEND_URL: http://localhost:8080
