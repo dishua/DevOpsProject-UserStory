@@ -13,6 +13,10 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Prepare Frontend Config
+        run: |
+          cp devops/config/nginx.conf.example frontend/nginx.conf
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -24,7 +28,7 @@ jobs:
         run: |
           cd frontend
           npm ci
-          cpm run build --if-present
+          npm run build --if-present
           
   backend:
     runs-on: ubuntu-latest
@@ -67,7 +71,7 @@ jobs:
 
       - name: Validate Docker Compose Configuration
         run: |
-          docker compose -f docker-compose.yml config
+          docker compose -f devops/Docker/config/docker-compose.yml config
 
       - name: Start services with Docker Compose
         env:
@@ -75,7 +79,7 @@ jobs:
           DB_USERSTORYPROJ_USER: ${{ secrets.DB_USERSTORYPROJ_USER }}
           DB_USERSTORYPROJ_PASSWORD: ${{ secrets.DB_USERSTORYPROJ_PASSWORD }}
         run: |
-          docker compose -f devops/config/docker-compose.yml up -d --build
+          docker compose -f devops/Docker/config/docker-compose.yml up -d --build
 
       - name: Check running containers
         run: |
@@ -95,5 +99,5 @@ jobs:
         if: always()
         run: |
           # Якщо впав, виводимо логи
-          docker compose logs
-          docker compose down -v
+          docker compose -f devops/config/docker-compose.yml logs
+          docker compose -f devops/config/docker-compose.yml down -v
