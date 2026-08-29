@@ -86,6 +86,7 @@ jobs:
 
       - name: Start services with Docker Compose
         env:
+          PROJECT_DIR: "."
           DB_ROOT_PASSWORD: ${{ secrets.DB_ROOT_PASSWORD }}
           DB_USERSTORYPROJ_USER: ${{ secrets.DB_USERSTORYPROJ_USER }}
           DB_USERSTORYPROJ_PASSWORD: ${{ secrets.DB_USERSTORYPROJ_PASSWORD }}
