@@ -1,0 +1,99 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: ["master"]
+  pull_request:
+    branches: ["master"]
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.11.0'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+          
+      - name: Install dependencies and Build
+        run: |
+          cd frontend
+          npm ci
+          cpm run build --if-present
+          
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          
+      - name: Build backend
+        run: |
+          cd backend
+          if [ -f "./mvnw" ]; then ./mvnw clean package; else  mvn clean package; fi
+
+  docker-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Frontend Docker Image
+        run: |
+          docker build -t test-frontend -f devops/Docker/config/frontend.Dockerfile ./frontend
+
+      - name: Build Backend Docker Image
+        run: |
+            docker build -t test-backend -f devops/Docker/config/backend.Dockerfile ./backend
+
+  integration-test:
+    needs: [frontend, backend]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate Docker Compose Configuration
+        run: |
+          docker compose -f docker-compose.yml config
+
+      - name: Start services with Docker Compose
+        env:
+          DB_ROOT_PASSWORD: ${{ secrets.DB_ROOT_PASSWORD }}
+          DB_USERSTORYPROJ_USER: ${{ secrets.DB_USERSTORYPROJ_USER }}
+          DB_USERSTORYPROJ_PASSWORD: ${{ secrets.DB_USERSTORYPROJ_PASSWORD }}
+        run: |
+          docker compose -f devops/config/docker-compose.yml up -d --build
+
+      - name: Check running containers
+        run: |
+          docker compose ps
+
+      - name: Wait & Healthcheck (Smoke Test)
+        run: |
+          sleep 15
+          
+          # Перевірка Frontend / Nginx
+          curl --fail http://localhost:80 || exit 1
+          
+          # Перевірка Backend
+          curl --fail http://localhost:8080/actuator/health || curl --fail http://localhost:8080/ || exit 1
+
+      - name: Stop containers and show logs on failure
+        if: always()
+        run: |
+          # Якщо впав, виводимо логи
+          docker compose logs
+          docker compose down -v
