@@ -60,7 +60,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Prepare Frontend Config
+      - name: Prepare Frontend Nginx Config
         run: |
           cp devops/config/nginx.conf.example frontend/nginx.conf
 
@@ -84,7 +84,11 @@ jobs:
         run: |
           docker compose -f devops/Docker/config/docker-compose.yaml config
           
-#Copying files ================
+#Copying files ================      
+      - name: Prepare Frontend Nginx Config
+        run: |
+          cp devops/config/nginx.conf.example frontend/nginx.conf     
+
       - name: Prepare Frontend Dockerfile
         run: |
           cp devops/Docker/config/frontend.Dockerfile frontend/Dockerfile
@@ -120,5 +124,5 @@ jobs:
         if: always()
         run: |
           # Якщо впав, виводимо логи
-          docker compose -f devops/config/docker-compose.yaml logs
-          docker compose -f devops/config/docker-compose.yaml down -v
+          docker compose -f devops/Docker/config/docker-compose.yaml logs
+          docker compose -f devops/Docker/config/docker-compose.yaml down -v
