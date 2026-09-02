@@ -108,7 +108,7 @@ jobs:
 
       - name: Check running containers
         run: |
-          docker compose ps
+          docker compose -f devops/Docker/config/docker-compose.yaml ps
 
       - name: Wait & Healthcheck (Smoke Test)
         run: |
