@@ -106,7 +106,7 @@ jobs:
         run: |
           docker compose -f devops/Docker/config/docker-compose.yaml up -d --build
 
-      - name: Check running containers
+      - name: Check running containers before sleep
         run: |
           docker compose -f devops/Docker/config/docker-compose.yaml ps
 
@@ -114,10 +114,10 @@ jobs:
         run: |
           sleep 15
           
-          # Перевірка Frontend / Nginx
-          curl --fail http://localhost:80 || exit 1
+          docker compose -f devops/Docker/config/docker-compose.yaml ps
           
-          # Перевірка Backend
+          curl --fail http://localhost:3000 || exit 1
+          
           curl --fail http://localhost:8080/actuator/health || curl --fail http://localhost:8080/ || exit 1
 
       - name: Stop containers and show logs on failure
