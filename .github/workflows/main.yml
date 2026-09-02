@@ -83,6 +83,15 @@ jobs:
       - name: Validate Docker Compose Configuration
         run: |
           docker compose -f devops/Docker/config/docker-compose.yaml config
+          
+#Copying files ================
+      - name: Prepare Frontend Dockerfile
+        run: |
+          cp devops/Docker/frontend.Dockerfile frontend/Dockerfile
+          
+      - name: Prepare Backend Dockerfile
+        run: |
+          cp devops/Docker/backend.Dockerfile backend/Dockerfile
 
       - name: Start services with Docker Compose
         env:
