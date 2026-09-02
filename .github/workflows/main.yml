@@ -87,11 +87,11 @@ jobs:
 #Copying files ================
       - name: Prepare Frontend Dockerfile
         run: |
-          cp devops/Docker/frontend.Dockerfile frontend/Dockerfile
+          cp devops/Docker/config/frontend.Dockerfile frontend/Dockerfile
           
       - name: Prepare Backend Dockerfile
         run: |
-          cp devops/Docker/backend.Dockerfile backend/Dockerfile
+          cp devops/Docker/config/backend.Dockerfile backend/Dockerfile
 
       - name: Start services with Docker Compose
         env:
